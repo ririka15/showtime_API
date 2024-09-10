@@ -157,6 +157,28 @@ namespace FunctionAPIApp
                                         await orderItemCommand.ExecuteNonQueryAsync();
                                     }
                                 }
+                                // 在庫を更新する処理を追加
+                                string updateStockSql = "UPDATE Item_table SET Stock = Stock - @Quantity WHERE ItemName = @ItemName";
+                                using (SqlCommand updateStockcommand = new SqlCommand(updateStockSql, connection, transaction))
+                                {
+                                    for (int i = 0; i < ItemNames.Length; i++)
+                                    {
+                                        updateStockcommand.Parameters.Clear();
+
+                                        updateStockcommand.Parameters.AddWithValue("@ItemName", ItemNames[i]);
+                                        updateStockcommand.Parameters.AddWithValue("@Quantity", QuantityArray[i]);
+
+                                        int rowsAffected = await updateStockcommand.ExecuteNonQueryAsync();
+                                        if (rowsAffected == 0)
+                                        {
+                                            // アイテムが見つからない場合
+                                            throw new Exception($"ItemID {ItemNames[i]} not found.");
+                                        }
+                                    }
+                                }
+
+
+
                             }
 
                             // トランザクションをコミット
