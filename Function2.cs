@@ -17,10 +17,11 @@ namespace FunctionAPIApp
     {
         [FunctionName("Login")]
         public static async Task<IActionResult> Run(
-     [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
-     ILogger log)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
+            ILogger log)
         {
             log.LogInformation("Processing a login request.");
+
             // GETメソッド用のパラメーター取得
             string emailAddress = req.Query["EmailAddress"];
             string password = req.Query["Password"];
@@ -33,8 +34,6 @@ namespace FunctionAPIApp
                 emailAddress = emailAddress ?? data?.EmailAddress;
                 password = password ?? data?.Password;
             }
-
-
 
             // 必要なパラメーターが揃っているか確認
             if (string.IsNullOrWhiteSpace(emailAddress) || string.IsNullOrWhiteSpace(password))
@@ -118,12 +117,9 @@ namespace FunctionAPIApp
             {
                 // エラーをログに出力
                 log.LogError(e.ToString());
-
                 return new StatusCodeResult(StatusCodes.Status500InternalServerError);
             }
         }
-
-
 
         [FunctionName("OrderSELECT")]
         public static async Task<IActionResult> OrderSELECT(
@@ -154,7 +150,7 @@ namespace FunctionAPIApp
                 {
                     // SQLクエリをCustomerIDでフィルタリング
                     string sql = @"
-                        SELECT i.ItemName AS ItemName, oi.Quantity, o.OrderDate, o.TotalAmount
+                        SELECT o.OrderID, i.ItemName AS ItemName, oi.Quantity, o.OrderDate, o.TotalAmount
                         FROM Order_table o
                         JOIN OrderItem_table oi ON o.OrderID = oi.OrderID
                         JOIN Item_table i ON oi.ItemID = i.ItemID
@@ -173,10 +169,11 @@ namespace FunctionAPIApp
                             {
                                 var item = new
                                 {
-                                    ItemName = reader.GetString(0),
-                                    Quantity = reader.GetInt32(1),
-                                    OrderDate = reader.GetDateTime(2),
-                                    TotalAmount = reader.GetDecimal(3)
+                                    OrderID = reader.GetInt32(0), // OrderIDを追加
+                                    ItemName = reader.GetString(1),
+                                    Quantity = reader.GetInt32(2),
+                                    OrderDate = reader.GetDateTime(3),
+                                    TotalAmount = reader.GetDecimal(4)
                                 };
                                 resultList.Add(item);
                             }
