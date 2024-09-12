@@ -15,25 +15,22 @@ namespace FunctionAPIApp
 {
     public static class Functions1
     {
-       
 
-        [FunctionName("InsertCustomerOrder")]
-        public static async Task<IActionResult> InsertCustomerOrder(
+
+        [FunctionName("InsertOrder")]
+        public static async Task<IActionResult> InsertOrder(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
             ILogger log)
         {
-            log.LogInformation("Processing an insert customer order request.");
+            log.LogInformation("Processing an insert order request.");
 
-            // GETメソッド用のパラメーター取得
-            string CustomerName = req.Query["CustomerName"];
-            string PhoneNumber = req.Query["PhoneNumber"];
-            string EmailAddress = req.Query["EmailAddress"];
-            string Address = req.Query["Address"];
-            string Password = req.Query["Password"];
+            // GET メソッドでのパラメータ取得
+            string customerId = req.Query["CustomerID"];
             string OrderDateStr = req.Query["OrderDate"];
             string TotalAmountStr = req.Query["TotalAmount"];
             string[] ItemNames = req.Query["ItemName"].ToArray();
             string[] QuantityArray = req.Query["Quantity"].ToArray();
+
 
             DateTime OrderDate;
             if (!DateTime.TryParse(OrderDateStr, out OrderDate))
@@ -56,34 +53,41 @@ namespace FunctionAPIApp
                 TotalAmount = 0; // デフォルト値
             }
 
-            // POSTメソッド用のパラメーター取得
+            // POST メソッドでのパラメータ取得
             if (req.Method == "POST")
             {
                 string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
                 dynamic data = JsonConvert.DeserializeObject(requestBody);
-
-                CustomerName = CustomerName ?? data?.CustomerName;
-                PhoneNumber = PhoneNumber ?? data?.PhoneNumber;
-                EmailAddress = EmailAddress ?? data?.EmailAddress;
-                Address = Address ?? data?.Address;
-                Password = Password ?? data?.Password;
-                OrderDate = data?.OrderDate ?? OrderDate;
-                TotalAmount = data?.TotalAmount ?? TotalAmount;
-                ItemNames = data?.ItemName?.ToObject<string[]>() ?? ItemNames;
-                QuantityArray = data?.Quantity?.ToObject<string[]>() ?? QuantityArray;
+                customerId = customerId ?? data?.CustomerID;
+                OrderDateStr = OrderDateStr ?? data?.OrderDate;
+                TotalAmountStr = TotalAmountStr ?? data?.TotalAmount;
+                ItemNames = ItemNames.Length > 0 ? ItemNames : data?.ItemName?.ToObject<string[]>() ?? Array.Empty<string>();
+                QuantityArray = QuantityArray.Length > 0 ? QuantityArray : data?.Quantity?.ToObject<string[]>() ?? Array.Empty<string>();
             }
 
+            DateTime orderDate = DateTime.UtcNow;
+            decimal totalAmount = 0;
+
+            if (!string.IsNullOrEmpty(OrderDateStr))
+            {
+                DateTime.TryParse(OrderDateStr, out orderDate);
+            }
+
+            if (!string.IsNullOrEmpty(TotalAmountStr))
+            {
+                decimal.TryParse(TotalAmountStr, out totalAmount);
+            }
+
+
+
             // 入力の検証
-            if (string.IsNullOrWhiteSpace(CustomerName) || string.IsNullOrWhiteSpace(PhoneNumber) || string.IsNullOrWhiteSpace(EmailAddress) || string.IsNullOrWhiteSpace(Address) || string.IsNullOrWhiteSpace(Password) || TotalAmount <= 0 || ItemNames.Length == 0 || QuantityArray.Length == 0 || ItemNames.Length != QuantityArray.Length)
+            if (string.IsNullOrEmpty(customerId) || TotalAmount <= 0 || ItemNames.Length == 0 || QuantityArray.Length == 0 || ItemNames.Length != QuantityArray.Length)
             {
                 return new BadRequestObjectResult(new { Message = "パラメーターが不足しています。" });
             }
-
             try
             {
-                // パスワードをハッシュ化
-                string hashedPassword = PasswordHelper.HashPassword(Password);
-
+                // DB接続設定
                 SqlConnectionStringBuilder builder = new SqlConnectionStringBuilder
                 {
                     DataSource = "m3hhasegawafunctiondb.database.windows.net",
@@ -101,20 +105,6 @@ namespace FunctionAPIApp
                     {
                         try
                         {
-                            // 顧客情報をCustomer_tableに挿入
-                            string customerSql = "INSERT INTO Customer_table (CustomerName, PhoneNumber, EmailAddress, Address, PasswordHash) OUTPUT INSERTED.CustomerID VALUES (@CustomerName, @PhoneNumber, @EmailAddress, @Address, @PasswordHash)";
-                            int customerId;
-                            using (SqlCommand command = new SqlCommand(customerSql, connection, transaction))
-                            {
-                                command.Parameters.AddWithValue("@CustomerName", CustomerName);
-                                command.Parameters.AddWithValue("@PhoneNumber", PhoneNumber);
-                                command.Parameters.AddWithValue("@EmailAddress", EmailAddress);
-                                command.Parameters.AddWithValue("@Address", Address);
-                                command.Parameters.AddWithValue("@PasswordHash", hashedPassword);
-
-                                customerId = (int)await command.ExecuteScalarAsync();
-                            }
-
                             // 注文情報をOrder_tableに挿入
                             string orderSql = "INSERT INTO Order_table (CustomerID, OrderDate, TotalAmount) OUTPUT INSERTED.OrderID VALUES (@CustomerID, @OrderDate, @TotalAmount)";
                             int orderId;
