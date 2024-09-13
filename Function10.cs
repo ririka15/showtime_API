@@ -14,7 +14,7 @@ namespace FunctionApp
     {
         [FunctionName("Customer2")]
         public static async Task<IActionResult> Run(
-     [HttpTrigger(AuthorizationLevel.Function, "get", "post", Route = "customer2")] HttpRequest req,
+     [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = "customer2")] HttpRequest req,
      ILogger log)
         {
             string method = req.Method.ToUpper();
