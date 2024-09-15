@@ -9,14 +9,12 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Microsoft.Data.SqlClient;
 using Newtonsoft.Json;
-using FunctionAPIApp.Helpers;
+using System.Linq;
 
 namespace FunctionAPIApp
 {
     public static class Functions1
     {
-
-
         [FunctionName("InsertOrder")]
         public static async Task<IActionResult> InsertOrder(
             [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
@@ -25,12 +23,23 @@ namespace FunctionAPIApp
             log.LogInformation("Processing an insert order request.");
 
             // GET メソッドでのパラメータ取得
-            string customerId = req.Query["CustomerID"];
+            string CustomerID = req.Query["CustomerID"];
             string OrderDateStr = req.Query["OrderDate"];
             string TotalAmountStr = req.Query["TotalAmount"];
             string[] ItemNames = req.Query["ItemName"].ToArray();
             string[] QuantityArray = req.Query["Quantity"].ToArray();
 
+            // POST メソッドでのパラメータ取得
+            if (req.Method == "POST")
+            {
+                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
+                dynamic data = JsonConvert.DeserializeObject(requestBody);
+                CustomerID = CustomerID ?? data?.CustomerID;
+                OrderDateStr = OrderDateStr ?? data?.OrderDate;
+                TotalAmountStr = TotalAmountStr ?? data?.TotalAmount;
+                ItemNames = ItemNames.Length > 0 ? ItemNames : data?.ItemName?.ToObject<string[]>() ?? Array.Empty<string>();
+                QuantityArray = QuantityArray.Length > 0 ? QuantityArray : data?.Quantity?.ToObject<string[]>() ?? Array.Empty<string>();
+            }
 
             DateTime OrderDate;
             if (!DateTime.TryParse(OrderDateStr, out OrderDate))
@@ -53,38 +62,43 @@ namespace FunctionAPIApp
                 TotalAmount = 0; // デフォルト値
             }
 
-            // POST メソッドでのパラメータ取得
-            if (req.Method == "POST")
-            {
-                string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-                dynamic data = JsonConvert.DeserializeObject(requestBody);
-                customerId = customerId ?? data?.CustomerID;
-                OrderDateStr = OrderDateStr ?? data?.OrderDate;
-                TotalAmountStr = TotalAmountStr ?? data?.TotalAmount;
-                ItemNames = ItemNames.Length > 0 ? ItemNames : data?.ItemName?.ToObject<string[]>() ?? Array.Empty<string>();
-                QuantityArray = QuantityArray.Length > 0 ? QuantityArray : data?.Quantity?.ToObject<string[]>() ?? Array.Empty<string>();
-            }
-
-            DateTime orderDate = DateTime.UtcNow;
-            decimal totalAmount = 0;
-
-            if (!string.IsNullOrEmpty(OrderDateStr))
-            {
-                DateTime.TryParse(OrderDateStr, out orderDate);
-            }
-
-            if (!string.IsNullOrEmpty(TotalAmountStr))
-            {
-                decimal.TryParse(TotalAmountStr, out totalAmount);
-            }
-
-
+            // リクエスト内容をログに出力
+            log.LogInformation($"Request Body: {await new StreamReader(req.Body).ReadToEndAsync()}");
+            log.LogInformation($"CustomerID: {CustomerID}");
+            log.LogInformation($"OrderDateStr: {OrderDateStr}");
+            log.LogInformation($"TotalAmountStr: {TotalAmountStr}");
+            log.LogInformation($"ItemNames: {string.Join(", ", ItemNames)}");
+            log.LogInformation($"QuantityArray: {string.Join(", ", QuantityArray)}");
 
             // 入力の検証
-            if (string.IsNullOrEmpty(customerId) || TotalAmount <= 0 || ItemNames.Length == 0 || QuantityArray.Length == 0 || ItemNames.Length != QuantityArray.Length)
+            List<string> errors = new List<string>();
+            if (string.IsNullOrEmpty(CustomerID))
             {
+                errors.Add("Error: CustomerID is missing");
+            }
+            if (TotalAmount <= 0)
+            {
+                errors.Add("Error: TotalAmount is invalid");
+            }
+            if (ItemNames.Length == 0)
+            {
+                errors.Add("Error: ItemNames is empty");
+            }
+            if (QuantityArray.Length == 0)
+            {
+                errors.Add("Error: QuantityArray is empty");
+            }
+            if (ItemNames.Length != QuantityArray.Length)
+            {
+                errors.Add("Error: ItemNames and QuantityArray lengths do not match");
+            }
+
+            if (errors.Any())
+            {
+                log.LogInformation(string.Join("; ", errors));
                 return new BadRequestObjectResult(new { Message = "パラメーターが不足しています。" });
             }
+
             try
             {
                 // DB接続設定
@@ -110,7 +124,7 @@ namespace FunctionAPIApp
                             int orderId;
                             using (SqlCommand command = new SqlCommand(orderSql, connection, transaction))
                             {
-                                command.Parameters.AddWithValue("@CustomerID", customerId);
+                                command.Parameters.AddWithValue("@CustomerID", CustomerID);
                                 command.Parameters.AddWithValue("@OrderDate", OrderDate);
                                 command.Parameters.AddWithValue("@TotalAmount", TotalAmount);
 
@@ -154,7 +168,6 @@ namespace FunctionAPIApp
                                     for (int i = 0; i < ItemNames.Length; i++)
                                     {
                                         updateStockcommand.Parameters.Clear();
-
                                         updateStockcommand.Parameters.AddWithValue("@ItemName", ItemNames[i]);
                                         updateStockcommand.Parameters.AddWithValue("@Quantity", QuantityArray[i]);
 
@@ -166,9 +179,6 @@ namespace FunctionAPIApp
                                         }
                                     }
                                 }
-
-
-
                             }
 
                             // トランザクションをコミット
