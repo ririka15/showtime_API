@@ -7,14 +7,16 @@ using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System;
+using Newtonsoft.Json;
+
 namespace FunctionAPIApp
 {
     public static class PrayerReservationFunctions
     {
         [FunctionName("PrayerReservationSELECT")]
         public static async Task<IActionResult> Run(
-    [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
-    ILogger log)
+            [HttpTrigger(AuthorizationLevel.Anonymous, "get", "post", Route = null)] HttpRequest req,
+            ILogger log)
         {
             var resultList = new List<object>();
 
@@ -38,9 +40,9 @@ namespace FunctionAPIApp
                 using (SqlConnection connection = new SqlConnection(builder.ConnectionString))
                 {
                     string sql = @"
-                SELECT reservationDate, reservationTime
-                FROM PrayerReservation
-                WHERE CustomerID = @CustomerID";
+                    SELECT ReservationID, reservationDate, reservationTime
+                    FROM PrayerReservation
+                    WHERE CustomerID = @CustomerID";
 
                     using (SqlCommand command = new SqlCommand(sql, connection))
                     {
@@ -51,11 +53,13 @@ namespace FunctionAPIApp
                         {
                             while (reader.Read())
                             {
-                                var reservationDate = reader.GetDateTime(0).ToString("yyyy-MM-dd");
-                                var reservationTime = reader.GetTimeSpan(1).ToString(@"hh\:mm"); // TimeSpan を文字列に変換
+                                var reservationID = reader.GetInt32(0); // ReservationIDを取得
+                                var reservationDate = reader.GetDateTime(1).ToString("yyyy-MM-dd");
+                                var reservationTime = reader.GetTimeSpan(2).ToString(@"hh\:mm"); // TimeSpan を文字列に変換
 
                                 var item = new
                                 {
+                                    ReservationID = reservationID, // ReservationIDを追加
                                     ReservationDate = reservationDate,
                                     ReservationTime = reservationTime
                                 };
